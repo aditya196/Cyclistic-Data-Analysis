@@ -1,0 +1,542 @@
+---
+title: "Cyclistic Analysis"
+output:
+  html_document:
+    theme: readable
+    toc: true
+    pandoc_args: [
+      "-V", "mainfont=Open Sans",
+      "-V", "mainfontcolor=#333333",
+      "-V", "backgroundcolor=#f2f2f2",
+      "-V", "fontsize=12pt",
+      "-V", "letterspacing=0.08em"
+    ]
+    
+  
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=FALSE}
+## Summary
+## Ask
+## Prepare
+## Process
+## Analyze
+## Share
+## Act
+```
+# 1. Summary
+
+
+Cyclistic is a bike-share company based in Chicago, boasting a fleet of 5,800 bicycles and 600 docking stations. The unique feature of their service is the flexibility it offers: bikes can be unlocked from one station and returned to any other in the system at any time. Thus far, Cyclistic has pursued a marketing strategy centered around creating broad awareness and appealing to diverse consumer segments. This strategy has been facilitated by the flexibility of its pricing plans, which include single-ride passes, full-day passes, and annual memberships. Casual riders are those who opt for single-ride or full-day passes, while Cyclistic Subscribers are those who choose annual memberships.
+
+Recognizing that their future success hinges on maximizing the number of Subscribers, Cyclistic is now shifting its focus. This case study delves into the differences between Customers and Subscribers habits to inform the marketing team's efforts in devising strategies aimed at converting casual riders into Subscribers.
+
+# 2. Ask
+### 2.1 Business Task -
+To identify how annual members and casual riders use Cyclistic bikes differently
+
+**Stakeholders - **\ 
+\
+Lily Moreno - : The director of marketing and your manager responsible for the development of campaigns and initiatives to promote the bike-share program. \
+Marketing analytics team: A team of data analysts who are responsible for collecting, analyzing, and reporting data that helps guide Cyclistic marketing strategy.\
+Executive team: The notoriously detail-oriented executive team will decide whether to approve the recommended marketing program.\
+
+
+# 3. Prepare
+
+### 3.1 Dataset used: 
+The data source used for this case study is publicly available from a bike sharing company in Chicago. It includes more than 600 thousand records of trip data. The dataset is present in a single table containing trip data for the 4th quarter of 2018. 
+
+### 3.2 Accessibility and privacy of data: 
+The dataset used is public data made available by Motivate International Inc. under [this](https://divvybikes.com/data-license-agreement) license  . The data does not contain any Personally Identifiable information.
+
+### 3.3 Information about our dataset: 
+The dataset consists of 12 fields. Each trip has a unique id associated with it. The other fields consist of Start Time, End Time, Bike Id, Trip Duration, From Station Id, From Station Name, To station Id, To station Name, usertype , Gender and birthyear.  Due to the size of the dataset, I would filter out the outliers not fitting within the context of the data. 
+
+### 3.4 Data Credibility and Integrity: 
+Due to the time period of data available (October 2018 - November 2018), the data may be skewed due to factors such as holidays, special events, or other external influences. 
+That is why we will give our case study an operational approach.
+
+### 3.5 Installing packages and opening libraries: 
+
+We will use the following packages for our analysis
+
+* tidyverse
+* janitor
+* skimr
+* here
+* lubridate
+* ggrepel
+* tidyr
+* dplyr
+* readODS
+* DescTools
+* quantreg
+* devtools
+* knitr
+
+``` {r code,results = 'hide',message=FALSE,warning=FALSE}
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(here)
+library(lubridate)
+library(ggrepel)
+library(tidyr)
+library(dplyr)
+library(readODS)
+library(DescTools)
+library(quantreg)
+library(devtools)
+library(knitr)
+```
+
+### 3.6 Dataset Import and Column Addition
+ 
+``` {r results = 'hide',message=FALSE,warning=FALSE}
+#Fetching Data from local file
+raw_data2 <- read_ods('C:/Users/adity/Downloads/Coursera Certificates DA/Case study 1/Raw Data/Divvy_Trips_2018_Q4/DTQ42018editable.ods')
+
+#Calculating the ridetime
+raw_data2 <- mutate(raw_data2,ridetime = end_time-start_time)
+#Calculating weekday
+raw_data2$weekday1 <- wday(raw_data2$start_time, label=TRUE, abbr=FALSE)
+raw_data2$weekday2 <- wday(raw_data2$start_time, label=TRUE, abbr=FALSE) #Fetched weekday in multiple formats
+
+#Fetching the hour when ride was started
+raw_data2$hourofday <- hour(raw_data2$start_time) #Get hour of day when rides were started
+
+#Converting weekday into different format
+raw_data2$weekday1 <- as.character(raw_data2$weekday1) #convert weekday to character
+
+count(raw_data2)
+```
+# 4. Process
+
+### 4.1 Cleaning the data 
+There are certain records which have the same starting and ending station AND a ride time less than 5 minutes. We will clean the dataset by removing those records as they are no longer relevant to us. A total of 2013 records were cleaned as a part of this process \
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+#Fetching records where rides started and ended at the same station with ridetime less than 5 minutes. 
+same_start_end <- raw_data2 %>% filter(from_station_id==to_station_id,ridetime<5)
+
+#Creating a new data frame for the clean data
+clean_data <- anti_join(raw_data2, same_start_end)
+
+#Deletion of records where ridetime is less than 0
+clean_data <- subset(clean_data,ridetime>0)
+print(count(raw_data2) - count(clean_data)) #Total number of deleted records
+
+```
+
+Data format is consistent and there are no duplicates in the primary key column of trip_id
+
+# 5. Analyze and Share
+
+### 5.1 Average Ride Duration by User Type
+
+The user types have already been classified as Customer or Subscriber. Their average ride time (in minutes) are plotted as follows - 
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+
+#Fetching average ride time and grouping them by usertypes. 
+avg_ride_times_usertype <- clean_data %>% group_by(usertype) %>% 
+    summarise(avg_ride_time = mean(ridetime))
+
+#Plotting the bar chart for average ridetime by usertype
+avg_ride_time_by_u <- ggplot(data = avg_ride_times_usertype, aes(x = usertype, y = avg_ride_time, fill = usertype)) +
+  geom_bar(stat = "identity", width = 0.5, color = "black") +
+  labs(x = "User Type", y = "Average Ride Time (minutes)", title = "Average Ride Time by User Type") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+print(avg_ride_time_by_u)
+```
+
+### 5.2 User-Type Ride Count Analysis
+
+Now we look into the total number of rides taken by each type of user during this time period. 
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+
+num_rides_by_usertype <- count(clean_data, usertype)
+num_rides_by_usertype2 <- mutate(num_rides_by_usertype,n/1000)
+
+#Plotting the total rides by usertype graph
+
+total_rides_by_u <- ggplot(data = num_rides_by_usertype2,aes(x=usertype,y=n/1000,fill=usertype) )+
+  geom_bar(stat="identity",width=0.5,color="black")  +
+  labs(x = "User Type",y="Number Of Rides (In Thousands)",title = "Total Rides by Usertype")+
+  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+print(total_rides_by_u)
+
+```
+
+From the above visuals we can determine that \
+1. Customers tend to have longer ride duration than Subscribers. \
+2. Customers tend to have fewer number of rides than Subscribers.
+
+### 5.3 Analysis of Weekly Ride Counts
+
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+#Getting total customer rides on the basis of weekday
+num_rides_weekday_c <- clean_data %>% 
+  filter(usertype=="Customer") %>% 
+  summarise(rides=n(),.by=c(weekday2,usertype))
+
+#Plotting the customer rides on the basis of weekday
+cust_weely_data <- ggplot(data = num_rides_weekday_c,aes(x=weekday2,y=rides,fill=rides))+
+  geom_bar(stat="identity",width=0.5,color="black")  +
+  
+  labs(x = "Weekday",y="Total Rides",title = "Customer Rides Frequency")+
+  scale_y_continuous(labels = scales::comma)+
+  scale_fill_gradient(low = "blue", high = "red")+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+#Getting total Subscriber rides on the basis of weekday
+num_rides_weekday_s <- clean_data %>% 
+  filter(usertype=="Subscriber") %>% 
+  summarise(rides=n(),.by=c(weekday2,usertype))
+#print(num_rides_weekday_s)
+
+#Plotting the subscriber rides on the basis of weekday
+sub_weely_data <- ggplot(data = num_rides_weekday_s,aes(x=weekday2,y=rides,fill=rides))+
+  geom_bar(stat="identity",width=0.5,color="black")  +
+  labs(x = "Weekday",y="Total Rides",title = "Subscriber Rides Frequency")+
+  scale_y_continuous(labels = scales::comma)+
+  scale_fill_gradient(low = "blue", high = "red")+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+print(cust_weely_data)
+print(sub_weely_data)
+
+```
+
+Based on this analysis, customers are more active on weekends compared to subscribers. \
+The graph illustrates consistent use by subscribers on weekdays.\
+The shorter average ride duration ( refer 5.1 ) for subscribers suggests they prefer quick rides and easy access to nearby docking stations.\
+This suggests that subscribers are likely commuters who use the app for work travel.\
+Meanwhile, customers opt for longer rides on weekdays. \
+
+
+### 5.4 Hourly Ride Frequency Analysis
+
+
+``` {r results = 'show',message=FALSE,warning=FALSE}
+#Grouping customer data of rides started on the hourly basis 
+hr_data_cust <- clean_data %>% 
+  filter(usertype=="Customer") %>% 
+  group_by(hourofday) %>% 
+  summarise(Totalrides = n())
+
+#Plotting customer data of rides started on the hourly basis 
+hr_rides_cust<- ggplot(data = hr_data_cust,aes(x=hourofday,y=Totalrides,fill=Totalrides))+
+  geom_col()+
+  labs(x = "Hour Of Day",y="Total Rides",title = "Total Rides each hour by Customers")+
+  scale_fill_gradient(low = "green", high = "red")+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+#Grouping subscriber data of rides started on the hourly basis 
+hr_data_sub <- clean_data %>% 
+  filter(usertype=="Subscriber") %>% 
+  group_by(hourofday) %>% 
+  summarise(Totalrides = n())
+
+
+#Plotting subscriber data of rides started on the hourly basis 
+hr_rides_sub <- ggplot(data = hr_data_sub,aes(x=hourofday,y=Totalrides,fill=Totalrides))+
+  geom_col()+
+  labs(x = "Hour Of Day",y="Total Rides",title = "Total Rides each hour by Subscribers")+
+  scale_fill_gradient(low = "green", high = "red")+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+#Displaying the above plots
+print(hr_rides_cust)
+print(hr_rides_sub)
+```
+
+As per the above charts - \
+
+1. Customers start majority of their rides between 12:00 and 17:00 \
+2. Subscribers tend to start majority of their rides at 6:00,7:00, 16:00  and 17:00 \
+3. This suggests that Subscribers are likely using the app for commuting to and from work.\
+4. The spike in rides that begins at 17:00 may also suggest that Subscribers often opt for leisure rides after their workday.\
+
+
+
+
+### 5.5 Most Popular Stations
+#### 5.5.1 Customers
+##### 5.5.1.1 Start Stations
+
+``` {r results = 'show',message=FALSE,warning=FALSE}
+#Fetching the 5 most popular stations from where customers started their rides
+top_cstarts <- clean_data %>% 
+  filter(usertype=="Customer") %>% 
+  group_by(from_station_name) %>% 
+  summarise(Total= n()) %>% 
+  arrange(desc(Total)) %>% 
+  slice(1:5)
+
+print(top_cstarts)
+```
+
+##### 5.5.1.2 End Stations
+
+``` {r results = 'show',message=FALSE,warning=FALSE}
+#Fetching the 5 most popular stations from where customers ended their rides
+top_cends <- clean_data %>% 
+  filter(usertype=="Customer") %>% 
+  group_by(to_station_name) %>% 
+  summarise(Total= n()) %>% 
+  arrange(desc(Total)) %>% 
+  slice(1:5)
+
+print(top_cends)
+
+```
+
+#### 5.5.2 Subscribers
+##### 5.5.2.1 Start Stations
+
+``` {r results = 'show',message=FALSE,warning=FALSE}
+#Fetching the 5 most popular stations from where subscribers started their rides
+top_substarts <- clean_data %>% 
+  filter(usertype=="Subscriber") %>% 
+  group_by(from_station_name) %>% 
+  summarise(Total= n()) %>% 
+  arrange(desc(Total)) %>% 
+  slice(1:5)
+
+print(top_substarts)
+```
+##### 5.5.2.2 End Stations
+``` {r results = 'show',message=FALSE,warning=FALSE}
+#Fetching the 5 most popular stations from where subscribers ended their rides
+top_subends <- clean_data %>% 
+  filter(usertype=="Subscriber") %>% 
+  group_by(to_station_name) %>% 
+  summarise(Total= n()) %>% 
+  arrange(desc(Total)) %>% 
+  slice(1:5)
+
+print(top_subends)
+```
+
+The data above indicates a clear distinction between the top 5 most popular stations for customers and subscribers.\
+Expanding the number of docking stations near the top 5 customer-favored stations could prove beneficial, not only for enhancing customer engagement,\
+but also for attracting more subscribers.
+
+### 5.6 Ride Distribution by Gender
+The given data consists of 48089 records whose gender is unknown to the app.\
+The below visualizations have excluded those records for the purpose of this analysis. \
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+##Customer Gender Classification of total rides 
+#Excluded null records 
+
+gend_rides_cust <- clean_data %>% 
+  filter((gender == "Male" | gender == "Female")&usertype=="Customer") %>% 
+  summarise(total_rides = n(),.by=c(gender)) %>% 
+  mutate(totals = sum(total_rides)) %>% 
+  group_by(gender) %>% 
+  summarise(total_percent = total_rides / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+
+colors <- c('#FFB6C1','#87CEEB')
+ 
+#Plotting pie chart of the gender classification of customers
+
+cust_pie_chart <- ggplot(data = gend_rides_cust,aes(x="",y=total_percent,fill=gender))+
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values=colors,labels=c("Male","Female")) +
+  theme_minimal() +
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title = "Gender Distribution of Customer Rides")
+  
+
+##Subscriber Gender Classification of total rides 
+gend_rides_sub <- clean_data %>% 
+  filter((gender == "Male" | gender == "Female")&usertype=="Subscriber") %>% 
+  summarise(total_rides = n(),.by=c(gender)) %>% 
+  mutate(totals = sum(total_rides)) %>% 
+  group_by(gender) %>% 
+  summarise(total_percent = total_rides / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+
+#Plotting pie chart of the gender classification of Subscribers
+sub_pie_chart <- ggplot(data = gend_rides_sub,aes(x="",y=total_percent,fill=gender))+
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values=colors,labels=c("Female","Male")) +
+  theme_minimal() +
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title = "Gender Distribution of Subscriber Rides") 
+#Displaying the pie charts
+print(cust_pie_chart)
+print(sub_pie_chart)
+```   
+
+There are a higher proprtion of active male riders in both user segments. \
+Because of which targeted marketing efforts towards male audiences could yield better results. \
+However, offering promotions or features that appeal specifically to female users might help in diversifying \
+the user base and attracting more female subscribers.
+
+
+### 5.7 Age based classification
+
+For this classification, ages of 45892 records was not present and thus have been filtered out for the purpose of this analysis \
+```{r results = 'show',message=FALSE,warning=FALSE}
+by_class <- clean_data %>% 
+  filter(birthyear >=1800) 
+
+
+
+by_class <- mutate(by_class,age = 2018-birthyear)
+
+
+by_class$age_group <- cut(by_class$age, breaks = c(15, 25, 35, 45, 55,Inf), labels = c("15-25", "26-35", "36-45", "46-55","56+"), right = FALSE)
+```
+
+```{r results = 'show',message=FALSE,warning=FALSE}
+colors2 <- c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854")
+by_class_c <- by_class %>% 
+  filter(usertype=="Customer") %>% 
+  summarise(total_rides = n(),.by=c(age_group)) %>% 
+  mutate(totals = sum(total_rides)) %>%
+  group_by(age_group) %>% 
+  summarise(total_percent = total_rides / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+age_plot_pie_c <- ggplot(data = by_class_c,aes(x="",y=total_percent,fill=age_group))+
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values=colors2,labels=c("15-25", "26-35", "36-45", "46-55","56+")) +
+  theme_minimal() +
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title = "Total Customer Rides by Age group")
+
+by_class_s <- by_class %>% 
+  filter(usertype=="Subscriber") %>% 
+  summarise(total_rides = n(),.by=c(age_group)) %>% 
+  mutate(totals = sum(total_rides)) %>%
+  group_by(age_group) %>% 
+  summarise(total_percent = total_rides / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+age_plot_pie_s<-ggplot(data = by_class_s,aes(x="",y=total_percent,fill=age_group))+
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values=colors2,labels=c("15-25", "26-35", "36-45", "46-55","56+")) +
+  theme_minimal() +
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title = "Total Subscriber Rides by Age group")
+
+print(age_plot_pie_c)
+print(age_plot_pie_s)
+
+```
+
+Based on the data, age group of 25-35 is most active among both set of users. \
+The age group of 15-25 is second most active among customers. \
+A targeted advertising campaign for customers aged between 15-35 highlighting the benefits and perks of \ 
+subscribing to the service can convert customers into subscribers. \
+Offering special promotional deals like student discounts,referral rewards to users of specific demographics can be a good strategy. 
+
+# 6 Conclusion( Act Phase )
+
+* There are some interesting insights I found in this data that I think would help the marketing team develop a strategy -\
+1) **Insight** -There is a noticeable divergence in usage patterns between customers and subscribers. Customers typically opt for more rides during the weekends. On the other hand, Subscribers opt for more rides on weekdays. \
+    
+   **Strategy** - Implement a reward system where customers earn points for using the app during weekdays. 
+These points can be redeemed only after subscribing to an annual plan. For instance, customers who consistently use the app on weekdays will accrue a predetermined number of points. Upon subscribing to the annual plan, they can redeem these points for additional months of subscription at no extra cost.This will *incentivize* the customers to get the annual membership and become a regular user of the app.\
+    
+2) **Insight** - The most popular stations from where the rides are started and ended are **completely different** for Customers and subscribers. Customers have a significantly                    higher ride duration and significantly less number of rides. This indicates that Customers likely prefer other mode of transportation for their daily commute, due                  to lack of access to the docking stations. This could likely be due to less number of docking stations present in the areas nearby customer residences. \
+    
+   **Strategy** - *Increase* the number of docking stations in **customer specific areas** and then Launch a *targeted marketing campaign* to inform  them about the expansion of                     docking stations in their residential areas. The customers can be notified on the phone app during their peak active hours of 11:00 to 17:00. Additionally, they                    can also be notified about the same through targeted email marketing campaigns. \
+    
+3) **Insight** -  Male users of both types are more active and tend to use the bike sharing app more often
+  
+   **Strategy** - Target male users with advertisements on platforms they frequent, such as sports websites, fitness apps, or social media platforms where male-centric content                     is popular. Utilize geo-targeting to focus on areas where male customers have started the most number of rides.  
+
+4) **Insight** - Customers and subscribers of age group 26-35 are more active than rest of the age groups. Customers of age group 15-25 are the second most active customers.
+
+   **Strategy** - Since the age group 26-35 is most active within both the user groups targeted messaging and promotions that resonate with the interests and lifestyles of                          individuals in this demographic is likely to increase conversion rate from Customers to Subscribers. 
+
+   **Strategy 2** - The 15-25 age group stands out as the second most active among our Customers, and it notably includes college students. To better serve this demographic, the                      app can offer exclusive discounts on annual memberships to college students upon verification of their valid college ID. This strategic move is poised to                          enhance long-term growth potential across multiple avenues 
+
+
+
+
+
+
